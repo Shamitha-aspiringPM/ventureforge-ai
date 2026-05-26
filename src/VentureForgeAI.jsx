@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, createContext } from "react";
 
 // ─── MIXPANEL ─────────────────────────────────────────────────────────────────
-const MIXPANEL_TOKEN = "d11bda2fc264179fb581b934e011933c";
+const MIXPANEL_TOKEN = "23315b35f51cbe502a6994943a7effb9";
 
 // Load Mixpanel SDK and init
 (function() {
