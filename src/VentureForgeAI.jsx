@@ -1,5 +1,26 @@
 import React, { useState, useEffect, useContext, createContext } from "react";
 
+// ─── MIXPANEL ─────────────────────────────────────────────────────────────────
+const MIXPANEL_TOKEN = "d11bda2fc264179fb581b934e011933c";
+
+// Load Mixpanel SDK and init
+(function() {
+  if (window.mixpanel) return;
+  const s = document.createElement("script");
+  s.src = "https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js";
+  s.onload = () => window.mixpanel.init(MIXPANEL_TOKEN, { persistence:"localStorage" });
+  document.head.appendChild(s);
+})();
+
+// Safe track wrapper — works even if SDK hasn't loaded yet
+const track = (event, props={}) => {
+  try {
+    if (window.mixpanel && window.mixpanel.track) {
+      window.mixpanel.track(event, props);
+    }
+  } catch(e) {}
+};
+
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 const FontLoader = () => (
   <style>{`
@@ -229,7 +250,9 @@ const Nudge = ({ current }) => {
 };
 
 // ─── LANDING ──────────────────────────────────────────────────────────────────
-const Landing = ({ onEnter }) => (
+const Landing = ({ onEnter }) => {
+  useEffect(() => { track("Landing Page Viewed"); }, []);
+  return (
   <div className="grid-bg" style={{ minHeight:"100vh", padding:"0 20px" }}>
     <nav style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"20px 0", maxWidth:1100, margin:"0 auto" }}>
       <div style={{ fontFamily:"var(--font-head)", fontWeight:800, fontSize:19 }}>
@@ -273,6 +296,7 @@ const Landing = ({ onEnter }) => (
     </div>
   </div>
 );
+};
 
 // ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 const Sidebar = () => {
@@ -382,8 +406,9 @@ const IdeaGenerator = () => {
     if (res._error) { setLoading(false); return; }
     const enriched = { ...res, industry:form.industry, audience:form.audience };
     setResult(enriched);
-    setIdea(enriched);      // ← updates global context immediately
+    setIdea(enriched);
     markDone("generator");
+    track("Idea Generated", { industry:form.industry, style:form.style, region:form.region });
     setLoading(false);
   };
 
@@ -508,9 +533,15 @@ const PipelineTab = ({ stepId, title, btnLabel, loadingSteps, prompt, renderResu
     const t = getText();
     setLoading(true);
     setResult(null);
+    track("Pipeline Step Started", { step: stepId, ideaTitle: idea?.ideaTitle || "manual" });
     const res = await ai(prompt(t), maxTokens);
     setResult(res);
-    if (!res._error) markDone(stepId);
+    if (!res._error) {
+      markDone(stepId);
+      track("Pipeline Step Completed", { step: stepId, ideaTitle: idea?.ideaTitle || "manual" });
+    } else {
+      track("Pipeline Step Failed", { step: stepId, error: res._error });
+    }
     setLoading(false);
   };
 
@@ -862,6 +893,10 @@ const Workspace = () => {
 export default function VentureForgeAI() {
   const [page, setPage] = useState("landing");
   const [tab,  setTab]  = useState("generator");
+  const setTabTracked = (newTab) => {
+    track("Tab Switched", { from: tab, to: newTab });
+    setTab(newTab);
+  };
 
   // ── Global state — single source of truth ──
   const [idea, setIdeaState] = useState(null);
@@ -870,14 +905,14 @@ export default function VentureForgeAI() {
 
   const setIdea = (i) => setIdeaState(i);
   const markDone = (step) => setDone(prev => prev.includes(step) ? prev : [...prev, step]);
-  const saveIdea = (i) => setSaved(prev => [...prev, i]);
+  const saveIdea = (i) => { setSaved(prev => [...prev, i]); track("Idea Saved", { ideaTitle: i.ideaTitle, industry: i.industry }); };
   const deleteSaved = (idx) => setSaved(prev => prev.filter((_,j)=>j!==idx));
-  const clearIdea = () => { setIdeaState(null); setDone([]); setTab("generator"); };
-  const loadIdea  = (i) => { setIdeaState(i); setDone(["generator"]); setTab("validation"); };
+  const clearIdea = () => { setIdeaState(null); setDone([]); setTab("generator"); track("Pipeline Cleared"); };
+  const loadIdea  = (i) => { setIdeaState(i); setDone(["generator"]); setTab("validation"); track("Idea Loaded From Workspace", { ideaTitle: i.ideaTitle }); };
 
-  const ctx = { tab, setTab, idea, setIdea, done, markDone, saved, saveIdea, deleteSaved, clearIdea, loadIdea };
+  const ctx = { tab, setTab: setTabTracked, idea, setIdea, done, markDone, saved, saveIdea, deleteSaved, clearIdea, loadIdea };
 
-  if (page === "landing") return <><FontLoader /><Landing onEnter={()=>setPage("app")} /></>;
+  if (page === "landing") return <><FontLoader /><Landing onEnter={()=>{ track("App Entered"); setPage("app"); }} /></>;
 
   const isPipeline = STEPS.some(s=>s.id===tab);
 
